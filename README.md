@@ -1,6 +1,6 @@
 # OpenClaw Office Notify Plugin
 
-The companion plugin for [OpenClaw Office](https://github.com/wickedapp/openclaw-office) — bridges OpenClaw agent events to the Office dashboard in real-time.
+> **Companion plugin for [OpenClaw Office](https://github.com/wickedapp/openclaw-office)** — bridges OpenClaw agent events to the Office dashboard in real-time.
 
 ## What It Does
 
@@ -28,7 +28,7 @@ When you send a message to your agent, this plugin notifies the Office dashboard
 ### 1. Clone the plugin
 
 ```bash
-git clone https://github.com/wickedapp/openclaw-kcc-notify.git ~/.openclaw/extensions/kcc-notify
+git clone https://github.com/wickedapp/openclaw-office-notify-plugin.git ~/.openclaw/extensions/openclaw-office-notify
 ```
 
 ### 2. Register in OpenClaw config
@@ -38,12 +38,12 @@ Add to your `~/.openclaw/openclaw.json`:
 ```json
 {
   "plugins": {
-    "allow": ["kcc-notify"],
+    "allow": ["openclaw-office-notify"],
     "load": {
-      "paths": ["~/.openclaw/extensions/kcc-notify"]
+      "paths": ["~/.openclaw/extensions/openclaw-office-notify"]
     },
     "entries": {
-      "kcc-notify": {
+      "openclaw-office-notify": {
         "enabled": true
       }
     }
@@ -59,7 +59,7 @@ openclaw gateway restart
 
 ## Configuration
 
-All options go in `plugins.entries.kcc-notify` in your OpenClaw config:
+All options go in `plugins.entries.openclaw-office-notify` in your OpenClaw config:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -79,7 +79,7 @@ If your Office dashboard has API auth enabled:
 
 ```json
 {
-  "kcc-notify": {
+  "openclaw-office-notify": {
     "enabled": true,
     "apiToken": "your-kcc-api-token"
   }

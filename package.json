@@ -1,15 +1,17 @@
 {
-  "name": "kcc-notify",
+  "name": "openclaw-office-notify-plugin",
   "version": "1.0.0",
-  "description": "OpenClaw plugin to notify KCC Office dashboard when messages are received",
+  "description": "OpenClaw Office notification plugin \u2014 bridges agent events to the Office dashboard",
   "type": "module",
   "main": "index.ts",
   "openclaw": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wickedapp/openclaw-kcc-notify.git"
+    "url": "https://github.com/wickedapp/openclaw-office-notify-plugin.git"
   },
   "keywords": [
     "openclaw",

@@ -1,6 +1,6 @@
 {
-  "id": "kcc-notify",
-  "name": "OpenClaw Office Notifier",
+  "id": "openclaw-office-notify",
+  "name": "OpenClaw Office Notify Plugin",
   "description": "Bridges OpenClaw agent events to the OpenClaw Office dashboard. Pushes messages, task lifecycle, and pipeline events via message_received/message_sent hooks.",
   "version": "2.0.0",
   "configSchema": {
