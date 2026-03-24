@@ -29,7 +29,7 @@ async function sendPipelineWake(text: string): Promise<boolean> {
       hooksToken = config?.hooks?.token || '';
     } catch {}
     if (!hooksToken) {
-      console.log('[office-notify] No hooks token found, cannot send wake');
+      console.log('[kcc-notify] No hooks token found, cannot send wake');
       return false;
     }
     const gatewayPort = 18789;
@@ -43,10 +43,10 @@ async function sendPipelineWake(text: string): Promise<boolean> {
       signal: AbortSignal.timeout(5000),
     });
     const ok = resp.ok;
-    console.log(`[office-notify] Wake sent (${ok ? 'ok' : resp.status}): ${text.slice(0, 80)}`);
+    console.log(`[kcc-notify] Wake sent (${ok ? 'ok' : resp.status}): ${text.slice(0, 80)}`);
     return ok;
   } catch (err: any) {
-    console.log(`[office-notify] Failed to send wake: ${err?.message || err}`);
+    console.log(`[kcc-notify] Failed to send wake: ${err?.message || err}`);
     return false;
   }
 }
@@ -166,7 +166,7 @@ async function postJson(
     clearTimeout(timeoutId);
     return response.ok;
   } catch (error) {
-    console.log(`[office-notify] POST ${url} failed (non-blocking):`,
+    console.log(`[kcc-notify] POST ${url} failed (non-blocking):`,
       error instanceof Error ? error.message : 'Unknown error');
     return false;
   }
@@ -196,7 +196,7 @@ export default function kccNotifyPlugin(api: any) {
     // Deduplicate
     ownerSenderIds = [...new Set(ownerSenderIds)];
     if (ownerSenderIds.length > 0) {
-      console.log(`[office-notify] Owner sender IDs (from allowFrom): ${ownerSenderIds.join(', ')}`);
+      console.log(`[kcc-notify] Owner sender IDs (from allowFrom): ${ownerSenderIds.join(', ')}`);
     }
   } catch {}
   const isOwner = (senderId: string): boolean => {
@@ -228,13 +228,13 @@ export default function kccNotifyPlugin(api: any) {
   }
 
   if (!enabled) {
-    console.log('[office-notify] Plugin disabled');
+    console.log('[kcc-notify] Plugin disabled');
     return;
   }
 
-  console.log('[office-notify] Plugin loaded — hooks: message_received + message_sent');
-  console.log('[office-notify]   workflow:', workflowEndpoint);
-  console.log('[office-notify]   messages:', messagesEndpoint);
+  console.log('[kcc-notify] Plugin loaded — hooks: message_received + message_sent');
+  console.log('[kcc-notify]   workflow:', workflowEndpoint);
+  console.log('[kcc-notify]   messages:', messagesEndpoint);
 
   // ── message_received: Boss messages → workflow + messages feed ──
   api.on('message_received', async (event: any) => {
@@ -244,18 +244,18 @@ export default function kccNotifyPlugin(api: any) {
     const senderName = event?.metadata?.senderName || 'Unknown';
     const isBoss = isOwner(senderId);
 
-    console.log(`[office-notify] message_received fired: senderId=${senderId} isBoss=${isBoss} content=${(content || '').slice(0, 60)}`);
+    console.log(`[kcc-notify] message_received fired: senderId=${senderId} isBoss=${isBoss} content=${(content || '').slice(0, 60)}`);
 
     // Filter system heartbeat/health-check noise — never push to dashboard
     const HEARTBEAT_NOISE = ['System heartbeat check', 'Periodic health check', 'Read HEARTBEAT.md', 'HEARTBEAT_OK'];
     if (HEARTBEAT_NOISE.some(p => content.includes(p))) {
-      console.log(`[office-notify] Filtered heartbeat noise: ${content.slice(0, 40)}`);
+      console.log(`[kcc-notify] Filtered heartbeat noise: ${content.slice(0, 40)}`);
       return;
     }
 
     // Push to messages feed (all received messages from Boss)
     if (isBoss && content) {
-      console.log(`[office-notify] Boss message → messages feed: ${content.slice(0, 60)}`);
+      console.log(`[kcc-notify] Boss message → messages feed: ${content.slice(0, 60)}`);
       void postJson(messagesEndpoint, {
         message: content,
         from: 'Boss',
@@ -265,7 +265,7 @@ export default function kccNotifyPlugin(api: any) {
 
     // Call start_flow for Boss messages (existing behavior)
     if (isBoss) {
-      console.log(`[office-notify] Boss message → start_flow: ${content.slice(0, 60)}`);
+      console.log(`[kcc-notify] Boss message → start_flow: ${content.slice(0, 60)}`);
       void postJson(workflowEndpoint, {
         action: 'start_flow',
         content: typeof content === 'string' ? content.slice(0, 200) : '',
@@ -286,7 +286,7 @@ export default function kccNotifyPlugin(api: any) {
 
     // Filter out messages that are just reporting harmless exec failures
     if (isHarmlessExecMessage(content)) {
-      console.log(`[office-notify] Suppressed harmless exec error message: ${content.slice(0, 60)}`);
+      console.log(`[kcc-notify] Suppressed harmless exec error message: ${content.slice(0, 60)}`);
       return;
     }
 
@@ -295,7 +295,7 @@ export default function kccNotifyPlugin(api: any) {
     const isToBoss = isOwner(recipientId);
 
     if (isToBoss) {
-      console.log(`[office-notify] Bot reply → messages feed: ${content.slice(0, 60)}`);
+      console.log(`[kcc-notify] Bot reply → messages feed: ${content.slice(0, 60)}`);
       void postJson(messagesEndpoint, {
         message: content,
         from: 'WickedMan',
@@ -303,7 +303,7 @@ export default function kccNotifyPlugin(api: any) {
       }, timeoutMs, apiToken);
 
       // Auto-complete any active task when we send a reply to Boss
-      console.log(`[office-notify] Bot reply → agent_complete`);
+      console.log(`[kcc-notify] Bot reply → agent_complete`);
       void postJson(workflowEndpoint, {
         action: 'agent_complete',
         agent: 'wickedman',
@@ -315,10 +315,27 @@ export default function kccNotifyPlugin(api: any) {
     description: 'Push bot replies to KCC Office messages feed + auto-complete tasks',
   });
 
-  // ── after_tool_call: filter exec failures, notify only on real problems ──
+  // ── after_tool_call: detect delegation + filter exec failures ──
   api.on('after_tool_call', async (event: any) => {
-    // Only care about exec tool calls
     const toolName = event?.toolName || event?.name || '';
+
+    // Detect sessions_spawn → notify dashboard about delegation
+    if (toolName === 'sessions_spawn') {
+      const args = event?.params || event?.input || {};
+      const delegatedTo = args?.agentId || 'agent';
+      const taskDetail = args?.task || 'Delegated task';
+      console.log(`[kcc-notify] Delegation detected → ${delegatedTo}: ${taskDetail.slice(0, 60)}`);
+      void postJson(workflowEndpoint, {
+        action: 'start_flow',
+        content: taskDetail.slice(0, 200),
+        from: 'Boss',
+        agent: 'wickedman',
+        delegatedTo,
+      }, timeoutMs, apiToken);
+      return;
+    }
+
+    // Only care about exec tool calls from here
     if (toolName !== 'exec') return;
 
     const result = event?.result || event?.output || {};
@@ -333,12 +350,12 @@ export default function kccNotifyPlugin(api: any) {
     const stderr = result?.stderr || result?.error || '';
 
     if (isHarmlessExecFailure(command, exitCode, stderr)) {
-      console.log(`[office-notify] Suppressed harmless exec failure (code ${exitCode}): ${command.slice(0, 80)}`);
+      console.log(`[kcc-notify] Suppressed harmless exec failure (code ${exitCode}): ${command.slice(0, 80)}`);
       return;
     }
 
     // Genuinely concerning failure — notify dashboard
-    console.log(`[office-notify] Exec failure → dashboard (code ${exitCode}): ${command.slice(0, 80)}`);
+    console.log(`[kcc-notify] Exec failure → dashboard (code ${exitCode}): ${command.slice(0, 80)}`);
     void postJson(messagesEndpoint, {
       message: `⚠️ Exec failure (exit ${exitCode}): ${command.slice(0, 150)}`,
       from: 'System',
@@ -349,13 +366,36 @@ export default function kccNotifyPlugin(api: any) {
     description: 'Filter harmless exec failures, notify only on real problems',
   });
 
+  // ── subagent_spawned: detect delegation and notify dashboard ──
+  api.on('subagent_spawned', async (event: any) => {
+    const childSessionKey = event?.childSessionKey || '';
+    const task = event?.task || event?.prompt || '';
+    // Extract agent ID from session key: "agent:py:subagent:uuid" → "py"
+    const parts = childSessionKey.split(':');
+    const agentId = parts.length >= 2 ? parts[1] : '';
+    
+    if (agentId && task) {
+      console.log(`[kcc-notify] Delegation detected → ${agentId}: ${task.slice(0, 60)}`);
+      void postJson(workflowEndpoint, {
+        action: 'start_flow',
+        content: task.slice(0, 200),
+        from: 'Boss',
+        agent: 'wickedman',
+        delegatedTo: agentId,
+      }, timeoutMs, apiToken);
+    }
+  }, {
+    name: 'kcc-delegation-detect',
+    description: 'Detect sub-agent spawn and notify dashboard about delegation',
+  });
+
   // ── subagent_delivery_target: suppress direct announce to chat ──
   // Return null to prevent delivery target resolution, letting orchestrator handle summary
   api.on('subagent_delivery_target', async (event: any, ctx: any) => {
     const childSessionKey = event?.childSessionKey || ctx?.childSessionKey || '';
     const requesterSessionKey = event?.requesterSessionKey || ctx?.requesterSessionKey || '';
     
-    console.log(`[office-notify] subagent_delivery_target: child=${childSessionKey}, requester=${requesterSessionKey}`);
+    console.log(`[kcc-notify] subagent_delivery_target: child=${childSessionKey}, requester=${requesterSessionKey}`);
     
     // Suppress direct announce to chat — let orchestrator handle summary
     // Return null to prevent delivery target resolution
@@ -368,13 +408,13 @@ export default function kccNotifyPlugin(api: any) {
   // ── subagent_ended: pipeline continuation via DB (single source of truth) ──
   api.on('subagent_ended', async (event: any, ctx: any) => {
     try {
-      console.log(`[office-notify] subagent_ended FIRED`);
+      console.log(`[kcc-notify] subagent_ended FIRED`);
 
       const childSessionKey = event?.childSessionKey || event?.sessionKey || event?.targetSessionKey || ctx?.childSessionKey || '';
       const requesterSessionKey = event?.requesterSessionKey || event?.parentSessionKey || ctx?.requesterSessionKey || '';
 
       if (!childSessionKey || !requesterSessionKey) {
-        console.log(`[office-notify] subagent_ended: missing session keys, skipping`);
+        console.log(`[kcc-notify] subagent_ended: missing session keys, skipping`);
         return;
       }
 
@@ -396,11 +436,11 @@ export default function kccNotifyPlugin(api: any) {
           pipelineTask = data?.task;
         }
       } catch (err: any) {
-        console.log(`[office-notify] Failed to query pipeline task: ${err?.message || err}`);
+        console.log(`[kcc-notify] Failed to query pipeline task: ${err?.message || err}`);
       }
 
       if (!pipelineTask) {
-        console.log(`[office-notify] No active pipeline task for agent ${agentId}, skipping`);
+        console.log(`[kcc-notify] No active pipeline task for agent ${agentId}, skipping`);
         return;
       }
 
@@ -409,11 +449,11 @@ export default function kccNotifyPlugin(api: any) {
       const currentStage = ps?.stages?.[ps?.currentStage];
 
       if (!currentStage || currentStage.status !== 'active') {
-        console.log(`[office-notify] Pipeline task ${taskId}: no active stage, skipping`);
+        console.log(`[kcc-notify] Pipeline task ${taskId}: no active stage, skipping`);
         return;
       }
 
-      console.log(`[office-notify] Pipeline match: agent=${agentId}, taskId=${taskId}, stage=${currentStage.name}`);
+      console.log(`[kcc-notify] Pipeline match: agent=${agentId}, taskId=${taskId}, stage=${currentStage.name}`);
 
       // ── 2. Fetch sub-agent's last message for QA verdict detection ──
       let firstLine = 'completed';
@@ -446,7 +486,7 @@ export default function kccNotifyPlugin(api: any) {
           }
         }
       } catch (err: any) {
-        console.log(`[office-notify] Failed to fetch session history: ${err?.message || err}`);
+        console.log(`[kcc-notify] Failed to fetch session history: ${err?.message || err}`);
       }
 
       // Detect QA verdict if this is a QA stage
@@ -476,16 +516,16 @@ export default function kccNotifyPlugin(api: any) {
         });
         if (resp.ok) {
           advanceResult = await resp.json() as any;
-          console.log(`[office-notify] advance_pipeline: nextAction=${advanceResult.nextAction}, nextAgent=${advanceResult.nextAgent}, stage=${advanceResult.stage}`);
+          console.log(`[kcc-notify] advance_pipeline: nextAction=${advanceResult.nextAction}, nextAgent=${advanceResult.nextAgent}, stage=${advanceResult.stage}`);
         } else {
-          console.log(`[office-notify] advance_pipeline failed: ${resp.status}`);
+          console.log(`[kcc-notify] advance_pipeline failed: ${resp.status}`);
         }
       } catch (err: any) {
-        console.log(`[office-notify] advance_pipeline error: ${err?.message || err}`);
+        console.log(`[kcc-notify] advance_pipeline error: ${err?.message || err}`);
       }
 
       if (!advanceResult?.success || advanceResult.nextAction === 'none') {
-        console.log(`[office-notify] No pipeline action needed`);
+        console.log(`[kcc-notify] No pipeline action needed`);
         return;
       }
 
@@ -494,7 +534,7 @@ export default function kccNotifyPlugin(api: any) {
       void sendPipelineWake(wakeText);
 
     } catch (err: any) {
-      console.log(`[office-notify] subagent_ended hook ERROR: ${err?.stack || err?.message || err}`);
+      console.log(`[kcc-notify] subagent_ended hook ERROR: ${err?.stack || err?.message || err}`);
     }
   }, {
     name: 'kcc-pipeline-continuation',
